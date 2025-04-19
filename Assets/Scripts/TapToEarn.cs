@@ -5,7 +5,6 @@ using System.Collections;
 
 public class TapToEarn : MonoBehaviour
 {
-    public int currentMoney;
     public int moneyPerTap = 10;
     public int upgradeCost = 1000;
 
@@ -14,6 +13,8 @@ public class TapToEarn : MonoBehaviour
     public Button tapButton;
     public Button upgradeButton;
     public TextMeshProUGUI upgradeButtonText;
+    public TextMeshProUGUI passiveIncomeText;
+
 
     public GameObject rewardPrefab;
     public RectTransform canvasTransform;
@@ -21,11 +22,11 @@ public class TapToEarn : MonoBehaviour
     void Start()
     {
         // Load saved values
-        currentMoney = PlayerPrefs.GetInt("Money", 0);
+        GameManager.Instance.money = PlayerPrefs.GetInt("Money", 0);
         moneyPerTap = PlayerPrefs.GetInt("MoneyPerTap", 10);
         upgradeCost = PlayerPrefs.GetInt("UpgradeCost", 1000);
 
-        // UI updates
+        // UI setup
         UpdateMoneyUI();
         UpdateUpgradeButtonText();
 
@@ -39,16 +40,18 @@ public class TapToEarn : MonoBehaviour
 
     void OnTapEarn()
     {
-        currentMoney += moneyPerTap;
+        GameManager.Instance.money += moneyPerTap;
         UpdateMoneyUI();
+        GameManager.Instance.SaveMoney();
 
-        // Save immediately
-        PlayerPrefs.SetInt("Money", currentMoney);
+        // Determine tap/touch position
+        Vector2 screenPos = Input.touchCount > 0
+            ? (Vector2)Input.GetTouch(0).position
+            : (Vector2)Input.mousePosition;
 
-        // Visual feedback
-        Vector2 screenPos = Input.mousePosition;
         Vector2 uiPos;
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasTransform, screenPos, null, out uiPos);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            canvasTransform, screenPos, null, out uiPos);
 
         GameObject clone = Instantiate(rewardPrefab, canvasTransform);
         clone.GetComponent<RectTransform>().anchoredPosition = uiPos;
@@ -56,54 +59,61 @@ public class TapToEarn : MonoBehaviour
 
     void OnUpgradeTap()
     {
-        if (currentMoney >= upgradeCost)
+        if (GameManager.Instance.money >= upgradeCost)
         {
-            currentMoney -= upgradeCost;
+            GameManager.Instance.money -= upgradeCost;
             moneyPerTap *= 2;
             upgradeCost = Mathf.RoundToInt(upgradeCost * 2f);
 
-            // Save new values
-            PlayerPrefs.SetInt("Money", currentMoney);
+            // Save
             PlayerPrefs.SetInt("MoneyPerTap", moneyPerTap);
             PlayerPrefs.SetInt("UpgradeCost", upgradeCost);
+            GameManager.Instance.SaveMoney();
 
             UpdateMoneyUI();
             UpdateUpgradeButtonText();
         }
     }
 
-    void UpdateMoneyUI()
+    public void UpdateMoneyUI()
     {
-        moneyText.text = $"Money: ${currentMoney:N0}";
+        moneyText.text = $"Money: ${GameManager.Instance.money:N0}";
         if (incomeDisplayText != null)
-            incomeDisplayText.text = $"Current :+${moneyPerTap} per tap";
+            incomeDisplayText.text = $"Current: +${moneyPerTap} per tap";
+
+        UpdatePassiveIncomeUI();
     }
 
     void UpdateUpgradeButtonText()
     {
         upgradeButtonText.text = $"Upgrade Income (${upgradeCost})";
+        upgradeButton.interactable = GameManager.Instance.money >= upgradeCost;
+    }
+    public void UpdatePassiveIncomeUI()
+    {
+        int totalPassive = GameManager.Instance.GetTotalPassiveIncome();
+        passiveIncomeText.text = $"Passive: +${totalPassive}/sec";
     }
 
     IEnumerator AutoSave()
     {
         while (true)
         {
-            PlayerPrefs.SetInt("Money", currentMoney);
-            PlayerPrefs.Save();
+            GameManager.Instance.SaveMoney();
             yield return new WaitForSeconds(5f);
         }
     }
+
     public void ResetGame()
     {
         PlayerPrefs.DeleteAll();
         PlayerPrefs.Save();
-        UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
+        UnityEngine.SceneManagement.SceneManager.LoadScene(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
     }
-
 
     void OnApplicationQuit()
     {
-        PlayerPrefs.SetInt("Money", currentMoney);
-        PlayerPrefs.Save();
+        GameManager.Instance.SaveMoney();
     }
 }
